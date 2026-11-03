@@ -1,15 +1,65 @@
 const { query, queryPalliative } = require('../config/db');
 
-// หน่วยบริการในเครือข่าย อ.โคกศรีสุพรรณ
+// หน่วยบริการในเครือข่าย อ.โคกศรีสุพรรณ (มาตรฐานระบบสุขภาพอำเภอโคกศรีสุพรรณ)
 const RPST_MAP = {
-    '11101': 'รพ.โคกศรีสุพรรณ',
+    'pcu-hospital': 'หน่วย PCU โรงพยาบาล',
     '05569': 'รพ.สต.บ้านห้วยหีบรุ่งอรุณ',
-    '05570': 'รพ.สต.บ้านโพนค้อ',
+    '05570': 'รพ.สต.บ้านเหล่าโพนค้อ',
     '05571': 'รพ.สต.บ้านม่วงไข่น้อย',
     '05572': 'รพ.สต.บ้านโคกนาดี',
     '05573': 'รพ.สต.บ้านโพนทองวัฒนา',
     '00000': 'นอกเขตบริการ'
 };
+
+// SQL Expression สำหรับจำแนกและผูกหน่วยบริการ (รพ.สต./PCU) ให้เป็นมาตรฐานเดียวกัน ไม่ซ้ำซ้อน
+const SQL_UNIT_EXPRESSION = `
+    CASE 
+        WHEN reg.assigned_unit_name LIKE '%ห้วยหีบ%' THEN 'รพ.สต.บ้านห้วยหีบรุ่งอรุณ'
+        WHEN reg.assigned_unit_name LIKE '%โพนค้อ%' THEN 'รพ.สต.บ้านเหล่าโพนค้อ'
+        WHEN reg.assigned_unit_name LIKE '%ม่วงไข%' THEN 'รพ.สต.บ้านม่วงไข่น้อย'
+        WHEN reg.assigned_unit_name LIKE '%โคกนาดี%' THEN 'รพ.สต.บ้านโคกนาดี'
+        WHEN reg.assigned_unit_name LIKE '%โพนทอง%' THEN 'รพ.สต.บ้านโพนทองวัฒนา'
+        WHEN reg.assigned_unit_name LIKE '%PCU%' THEN 'หน่วย PCU โรงพยาบาล'
+        WHEN pt.chwpart != '47' OR pt.amppart != '15' THEN 'นอกเขตบริการ'
+        WHEN pt.tmbpart = '01' AND CAST(pt.moopart AS UNSIGNED) IN (3, 6, 11, 12, 17, 18) THEN 'รพ.สต.บ้านห้วยหีบรุ่งอรุณ'
+        WHEN pt.tmbpart = '01' THEN 'หน่วย PCU โรงพยาบาล'
+        WHEN pt.tmbpart = '02' THEN 'รพ.สต.บ้านเหล่าโพนค้อ'
+        WHEN pt.tmbpart = '03' THEN 'รพ.สต.บ้านม่วงไข่น้อย'
+        WHEN pt.tmbpart = '04' AND CAST(pt.moopart AS UNSIGNED) IN (1, 4, 5, 9, 10, 11, 12) THEN 'รพ.สต.บ้านโพนทองวัฒนา'
+        WHEN pt.tmbpart = '04' THEN 'รพ.สต.บ้านโคกนาดี'
+        ELSE 'หน่วย PCU โรงพยาบาล'
+    END
+`;
+
+// Helper ฟังก์ชันสำหรับกำหนดชื่อหน่วยบริการในระดับ JavaScript
+function resolveUnitName(regUnitName, chw, amp, tmb, moo) {
+    if (regUnitName) {
+        if (regUnitName.includes('ห้วยหีบ')) return 'รพ.สต.บ้านห้วยหีบรุ่งอรุณ';
+        if (regUnitName.includes('โพนค้อ')) return 'รพ.สต.บ้านเหล่าโพนค้อ';
+        if (regUnitName.includes('ม่วงไข')) return 'รพ.สต.บ้านม่วงไข่น้อย';
+        if (regUnitName.includes('โคกนาดี')) return 'รพ.สต.บ้านโคกนาดี';
+        if (regUnitName.includes('โพนทอง')) return 'รพ.สต.บ้านโพนทองวัฒนา';
+        if (regUnitName.includes('PCU')) return 'หน่วย PCU โรงพยาบาล';
+    }
+
+    if (chw !== '47' || amp !== '15') return 'นอกเขตบริการ';
+    const mooNum = parseInt(moo, 10);
+
+    if (tmb === '01') {
+        const hhbMoos = [3, 6, 11, 12, 17, 18];
+        if (hhbMoos.includes(mooNum)) return 'รพ.สต.บ้านห้วยหีบรุ่งอรุณ';
+        return 'หน่วย PCU โรงพยาบาล';
+    }
+    if (tmb === '02') return 'รพ.สต.บ้านเหล่าโพนค้อ';
+    if (tmb === '03') return 'รพ.สต.บ้านม่วงไข่น้อย';
+    if (tmb === '04') {
+        const ptwMoos = [1, 4, 5, 9, 10, 11, 12];
+        if (ptwMoos.includes(mooNum)) return 'รพ.สต.บ้านโพนทองวัฒนา';
+        return 'รพ.สต.บ้านโคกนาดี';
+    }
+
+    return 'หน่วย PCU โรงพยาบาล';
+}
 
 // แปลงวันที่เป็น พ.ศ.
 function formatThaiDate(dateStr) {
@@ -311,18 +361,8 @@ async function getPatients(options = {}) {
         const vs = visitMap.get(core.hn) || {};
         const fdhComp = fdhMap.get(core.hn) || 0;
 
-        // Determine RPST Name
-        let rpstName = pt.assigned_unit_name;
-        if (!rpstName) {
-            switch (pt.tmbpart) {
-                case '01': rpstName = 'รพ.สต.บ้านห้วยหีบรุ่งอรุณ'; break;
-                case '02': rpstName = 'รพ.สต.บ้านโพนค้อ'; break;
-                case '03': rpstName = 'รพ.สต.บ้านม่วงไข่น้อย'; break;
-                case '04': rpstName = 'รพ.สต.บ้านโคกนาดี'; break;
-                case '05': rpstName = 'รพ.สต.บ้านโพนทองวัฒนา'; break;
-                default: rpstName = 'รพ.โคกศรีสุพรรณ'; break;
-            }
-        }
+        // Determine RPST Name (จำแนกแบบมาตรฐาน ไม่เกิดชื่อซ้ำ)
+        const rpstName = resolveUnitName(pt.assigned_unit_name, pt.chwpart, pt.amppart, pt.tmbpart, pt.moopart);
 
         const age = pt.birthday ? (new Date().getFullYear() - new Date(pt.birthday).getFullYear()) : '-';
         const death = (pt.death === 'Y') ? 'Y' : 'N';
@@ -378,7 +418,7 @@ async function getHospitalVisits(hn) {
     const patientSql = `
         SELECT pt.hn, pt.cid, CONCAT(pt.pname, pt.fname, ' ', pt.lname) AS ptname,
                CONCAT(pt.addrpart, ' หมู่ ', pt.moopart, ' ', COALESCE(th.full_name, '')) AS addr,
-               COALESCE(reg.assigned_unit_name, 'รพ.โคกศรีสุพรรณ') AS rpst_name
+               ${SQL_UNIT_EXPRESSION} AS rpst_name
         FROM patient pt
         LEFT JOIN thaiaddress th ON th.addressid = CONCAT(pt.chwpart, pt.amppart, pt.tmbpart)
         LEFT JOIN palliative.palliative_registry reg ON reg.hn = pt.hn
@@ -444,7 +484,7 @@ async function getZ718Visits(hn) {
     const patientSql = `
         SELECT pt.hn, pt.cid, CONCAT(pt.pname, pt.fname, ' ', pt.lname) AS ptname,
                CONCAT(pt.addrpart, ' หมู่ ', pt.moopart, ' ', COALESCE(th.full_name, '')) AS addr,
-               COALESCE(reg.assigned_unit_name, 'รพ.โคกศรีสุพรรณ') AS rpst_name
+               ${SQL_UNIT_EXPRESSION} AS rpst_name
         FROM patient pt
         LEFT JOIN thaiaddress th ON th.addressid = CONCAT(pt.chwpart, pt.amppart, pt.tmbpart)
         LEFT JOIN palliative.palliative_registry reg ON reg.hn = pt.hn
@@ -507,7 +547,7 @@ async function getPatientFDHClaim(hn) {
     const patientSql = `
         SELECT pt.hn, pt.cid, CONCAT(pt.pname, pt.fname, ' ', pt.lname) AS ptname,
                CONCAT(pt.addrpart, ' หมู่ ', pt.moopart, ' ', COALESCE(th.full_name, '')) AS addr,
-               COALESCE(reg.assigned_unit_name, 'รพ.โคกศรีสุพรรณ') AS rpst_name
+               ${SQL_UNIT_EXPRESSION} AS rpst_name
         FROM patient pt
         LEFT JOIN thaiaddress th ON th.addressid = CONCAT(pt.chwpart, pt.amppart, pt.tmbpart)
         LEFT JOIN palliative.palliative_registry reg ON reg.hn = pt.hn
@@ -600,19 +640,10 @@ async function getOverviewCharts(dt1 = '2018-01-01', dt2 = '2099-12-31') {
     `;
     const deceasedDiag = await query(deceasedDiagSql, [dt1, dt2]);
 
-    // 2. กราฟวงกลม: ผู้ป่วยแยกตาม รพ.สต.
+    // 2. กราฟวงกลม: ผู้ป่วยแยกตาม รพ.สต. (ใช้ SQL_UNIT_EXPRESSION ป้องกันชื่อซ้ำ)
     const rpstSql = `
         SELECT 
-            COALESCE(reg.assigned_unit_name, 
-                CASE pt.tmbpart
-                    WHEN '01' THEN 'รพ.สต.บ้านห้วยหีบรุ่งอรุณ'
-                    WHEN '02' THEN 'รพ.สต.บ้านโพนค้อ'
-                    WHEN '03' THEN 'รพ.สต.บ้านม่วงไข่น้อย'
-                    WHEN '04' THEN 'รพ.สต.บ้านโคกนาดี'
-                    WHEN '05' THEN 'รพ.สต.บ้านโพนทองวัฒนา'
-                    ELSE 'รพ.โคกศรีสุพรรณ'
-                END
-            ) AS rpst_name,
+            ${SQL_UNIT_EXPRESSION} AS rpst_name,
             COUNT(DISTINCT ov.hn) AS count
         FROM vn_stat ov 
         LEFT JOIN patient pt ON pt.hn = ov.hn
@@ -669,19 +700,10 @@ async function getOverviewCharts(dt1 = '2018-01-01', dt2 = '2099-12-31') {
 async function getCategoryCharts(category = 'cancer', dt1 = '2018-01-01', dt2 = '2099-12-31') {
     const catObj = CATEGORY_DIAGS[category] || CATEGORY_DIAGS['cancer'];
 
-    // 1. กราฟแยกตาม รพ.สต. ในหมวดนี้
+    // 1. กราฟแยกตาม รพ.สต. ในหมวดนี้ (ใช้ SQL_UNIT_EXPRESSION ป้องกันชื่อซ้ำ)
     const rpstSql = `
         SELECT 
-            COALESCE(reg.assigned_unit_name, 
-                CASE pt.tmbpart
-                    WHEN '01' THEN 'รพ.สต.บ้านห้วยหีบรุ่งอรุณ'
-                    WHEN '02' THEN 'รพ.สต.บ้านโพนค้อ'
-                    WHEN '03' THEN 'รพ.สต.บ้านม่วงไข่น้อย'
-                    WHEN '04' THEN 'รพ.สต.บ้านโคกนาดี'
-                    WHEN '05' THEN 'รพ.สต.บ้านโพนทองวัฒนา'
-                    ELSE 'รพ.โคกศรีสุพรรณ'
-                END
-            ) AS rpst_name,
+            ${SQL_UNIT_EXPRESSION} AS rpst_name,
             COUNT(DISTINCT ov.hn) AS count
         FROM vn_stat ov 
         LEFT JOIN patient pt ON pt.hn = ov.hn
