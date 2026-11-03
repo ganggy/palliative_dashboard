@@ -57,8 +57,15 @@ const App = {
         const toggleBtn = document.getElementById('menu-toggle');
         const sidebar = document.getElementById('sidebar');
         if (toggleBtn && sidebar) {
-            toggleBtn.addEventListener('click', () => {
+            toggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
                 sidebar.classList.toggle('open');
+            });
+
+            document.addEventListener('click', (e) => {
+                if (sidebar.classList.contains('open') && !sidebar.contains(e.target) && !toggleBtn.contains(e.target)) {
+                    sidebar.classList.remove('open');
+                }
             });
         }
 
@@ -445,23 +452,25 @@ const App = {
         const contentEl = document.getElementById('page-content');
         contentEl.innerHTML = `
             <div class="filter-card">
-                <div style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 16px;">
+                <!-- 9 Report Tabs Pill Bar -->
+                <div class="report-tabs-bar">
                     ${reportsList.map(r => `
-                        <button class="nav-item ${this.state.currentReport === r.id ? 'active' : ''}" style="white-space: nowrap; border: 1px solid var(--border-color);" onclick="App.changeReport('${r.id}')">
-                            <i class="fa ${r.icon}"></i> ${r.name}
+                        <button class="report-tab-btn ${this.state.currentReport === r.id ? 'active' : ''}" onclick="App.changeReport('${r.id}')">
+                            <i class="fa ${r.icon}"></i> <span>${r.name}</span>
                         </button>
                     `).join('')}
                 </div>
-                <div class="filter-grid">
-                    <div class="form-group">
-                        <label>ช่วงวันที่เริ่มต้น</label>
+                <!-- Compact Balanced Filters -->
+                <div class="filter-grid" style="margin-top: 10px;">
+                    <div class="form-group short-group">
+                        <label><i class="fa fa-calendar-day"></i> ช่วงวันที่เริ่มต้น</label>
                         <input type="date" class="form-control" id="rep_dt1" value="${this.state.filters.dt1}">
                     </div>
-                    <div class="form-group">
-                        <label>ช่วงวันที่สิ้นสุด</label>
+                    <div class="form-group short-group">
+                        <label><i class="fa fa-calendar-check"></i> ช่วงวันที่สิ้นสุด</label>
                         <input type="date" class="form-control" id="rep_dt2" value="${this.state.filters.dt2}">
                     </div>
-                    <div>
+                    <div class="form-actions">
                         <button class="btn-primary" onclick="App.applyReportFilter()">
                             <i class="fa fa-search"></i> ประมวลผลรายงาน
                         </button>
@@ -679,17 +688,17 @@ const App = {
         contentEl.innerHTML = `
             <div class="filter-card">
                 <div class="filter-grid">
-                    <div class="form-group">
-                        <label>ช่วงวันที่เริ่มต้น</label>
+                    <div class="form-group short-group">
+                        <label><i class="fa fa-calendar-day"></i> ช่วงวันที่เริ่มต้น</label>
                         <input type="date" class="form-control" id="med_dt1" value="${this.state.filters.dt1}">
                     </div>
-                    <div class="form-group">
-                        <label>ช่วงวันที่สิ้นสุด</label>
+                    <div class="form-group short-group">
+                        <label><i class="fa fa-calendar-check"></i> ช่วงวันที่สิ้นสุด</label>
                         <input type="date" class="form-control" id="med_dt2" value="${this.state.filters.dt2}">
                     </div>
-                    <div>
+                    <div class="form-actions">
                         <button class="btn-primary" onclick="App.applyMedicalFilter()">
-                            <i class="fa fa-search"></i> ค้นหา
+                            <i class="fa fa-search"></i> ประมวลผล
                         </button>
                     </div>
                 </div>
@@ -788,16 +797,16 @@ const App = {
         contentEl.innerHTML = `
             <div class="filter-card">
                 <div class="filter-grid">
-                    <div class="form-group">
-                        <label>ช่วงวันที่เริ่มต้น</label>
+                    <div class="form-group short-group">
+                        <label><i class="fa fa-calendar-day"></i> ช่วงวันที่เริ่มต้น</label>
                         <input type="date" class="form-control" id="ct_dt1" value="${this.state.filters.dt1}">
                     </div>
-                    <div class="form-group">
-                        <label>ช่วงวันที่สิ้นสุด</label>
+                    <div class="form-group short-group">
+                        <label><i class="fa fa-calendar-check"></i> ช่วงวันที่สิ้นสุด</label>
                         <input type="date" class="form-control" id="ct_dt2" value="${this.state.filters.dt2}">
                     </div>
-                    <div class="form-group">
-                        <label>สิทธิการรักษา</label>
+                    <div class="form-group short-group">
+                        <label><i class="fa fa-id-card-clip"></i> สิทธิการรักษา</label>
                         <select class="form-control" id="ct_hipdata">
                             <option value="0">ทั้งหมด</option>
                             <option value="1">บัตรทอง (UCS)</option>
@@ -806,9 +815,9 @@ const App = {
                             <option value="4">สิทธิอื่นๆ</option>
                         </select>
                     </div>
-                    <div>
+                    <div class="form-actions">
                         <button class="btn-primary" onclick="App.applyCTFilter()">
-                            <i class="fa fa-search"></i> ค้นหา
+                            <i class="fa fa-search"></i> ประมวลผล
                         </button>
                     </div>
                 </div>
@@ -909,23 +918,23 @@ const App = {
 
         contentEl.innerHTML = `
             <!-- Filters & Search Toolbar -->
-            <div class="filter-card" style="margin-bottom: 20px;">
-                <div class="filter-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
-                    <div class="filter-group">
+            <div class="filter-card">
+                <div class="filter-grid">
+                    <div class="form-group short-group">
                         <label><i class="fa fa-calendar"></i> ปีงบประมาณ</label>
                         <select id="fdh-year-filter" class="form-control" onchange="App.fetchFDHPaidData()">
                             <option value="">-- ทั้งหมดทุกปี --</option>
                         </select>
                     </div>
-                    <div class="filter-group" style="grid-column: span 2;">
-                        <label><i class="fa fa-magnifying-glass"></i> ค้นหา (HN, เลขบัตร ปชช., ชื่อ-สกุล, หรือเลข REP)</label>
-                        <input type="text" id="fdh-search-input" class="form-control" placeholder="พิมพ์คำค้นหาแล้วกด Enter หรือค้นหา..." onkeypress="if(event.key === 'Enter') App.fetchFDHPaidData()">
+                    <div class="form-group search-group">
+                        <label><i class="fa fa-magnifying-glass"></i> ค้นหา (HN, CID, ชื่อ-สกุล, หรือเลข REP)</label>
+                        <input type="text" id="fdh-search-input" class="form-control" placeholder="พิมพ์คำค้นหาแล้วกด Enter..." onkeypress="if(event.key === 'Enter') App.fetchFDHPaidData()">
                     </div>
-                    <div class="filter-group" style="display: flex; align-items: flex-end; gap: 8px;">
-                        <button class="btn-primary" onclick="App.fetchFDHPaidData()" style="height: 38px;">
+                    <div class="form-actions">
+                        <button class="btn-primary" onclick="App.fetchFDHPaidData()">
                             <i class="fa fa-search"></i> ค้นหา
                         </button>
-                        <button class="btn-secondary" onclick="document.getElementById('fdh-search-input').value = ''; document.getElementById('fdh-year-filter').value = ''; App.fetchFDHPaidData();" style="height: 38px;">
+                        <button class="btn-secondary" onclick="document.getElementById('fdh-search-input').value = ''; document.getElementById('fdh-year-filter').value = ''; App.fetchFDHPaidData();">
                             <i class="fa fa-rotate"></i> ล้าง
                         </button>
                     </div>
@@ -1306,36 +1315,36 @@ const App = {
         return `
             <div class="filter-card">
                 <div class="filter-grid">
-                    <div class="form-group">
-                        <label>ช่วงวันที่รับบริการเริ่มต้น</label>
+                    <div class="form-group short-group">
+                        <label><i class="fa fa-calendar-day"></i> วันที่เริ่มต้น</label>
                         <input type="date" class="form-control" id="f_dt1" value="${this.state.filters.dt1}">
                     </div>
-                    <div class="form-group">
-                        <label>ช่วงวันที่รับบริการสิ้นสุด</label>
+                    <div class="form-group short-group">
+                        <label><i class="fa fa-calendar-check"></i> วันที่สิ้นสุด</label>
                         <input type="date" class="form-control" id="f_dt2" value="${this.state.filters.dt2}">
                     </div>
                     <div class="form-group">
-                        <label>หน่วยบริการ (รพ.สต.)</label>
+                        <label><i class="fa fa-hospital-user"></i> รพ.สต. ในเครือข่าย</label>
                         <select class="form-control" id="f_unit">
-                            <option value="99999">ทั้งหมด</option>
+                            <option value="99999">ทั้งหมดทุกหน่วย</option>
                             ${this.state.units.filter(u => u.code !== '99999').map(u => `
                                 <option value="${u.code}" ${this.state.filters.unit === u.code ? 'selected' : ''}>${u.name}</option>
                             `).join('')}
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>สถานะผู้ป่วย</label>
+                        <label><i class="fa fa-heart-pulse"></i> สถานะผู้ป่วย</label>
                         <select class="form-control" id="f_status">
                             <option value="99999" ${this.state.filters.status === '99999' ? 'selected' : ''}>ทั้งหมด</option>
-                            <option value="Y" ${this.state.filters.status === 'Y' ? 'selected' : ''}>เสียชีวิต</option>
                             <option value="N" ${this.state.filters.status === 'N' ? 'selected' : ''}>ยังมีชีวิต</option>
+                            <option value="Y" ${this.state.filters.status === 'Y' ? 'selected' : ''}>เสียชีวิต</option>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label>ค้นหา (HN / ชื่อ / เลขบัตร)</label>
-                        <input type="text" class="form-control" id="f_search" placeholder="พิมพ์เพื่อค้นหา..." value="${this.state.filters.search}">
+                    <div class="form-group search-group">
+                        <label><i class="fa fa-magnifying-glass"></i> ค้นหา (HN, ชื่อ, เลขบัตร)</label>
+                        <input type="text" class="form-control" id="f_search" placeholder="พิมพ์คำค้นหา..." value="${this.state.filters.search}" onkeypress="if(event.key==='Enter') App.applyFilters('${category}')">
                     </div>
-                    <div>
+                    <div class="form-actions">
                         <button class="btn-primary" onclick="App.applyFilters('${category}')">
                             <i class="fa fa-search"></i> ค้นหา
                         </button>
