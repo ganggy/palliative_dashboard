@@ -87,32 +87,57 @@ const App = {
             const data = await res.json();
             if (data.authenticated) {
                 this.state.currentUser = data.user;
-                this.renderUserBadge();
+                this.renderUserBadge(true);
             } else {
-                // Default guest / doctor view
-                this.state.currentUser = {
-                    name: 'เจ้าหน้าที่คลินิก Palliative',
-                    position: 'พยาบาล / แพทย์',
-                    groupname: 'งานการดูแลแบบประคับประคอง'
-                };
-                this.renderUserBadge();
+                this.state.currentUser = null;
+                this.renderUserBadge(false);
             }
         } catch (e) {
             console.error('Check auth error:', e);
+            this.renderUserBadge(false);
         }
     },
 
-    renderUserBadge() {
+    renderUserBadge(isAuth = false) {
         const userEl = document.getElementById('user-profile-display');
         if (!userEl) return;
-        const user = this.state.currentUser;
-        userEl.innerHTML = `
-            <div class="user-avatar"><i class="fa fa-user-md"></i></div>
-            <div>
-                <div style="font-size: 12.5px; font-weight: 600;">${user.name}</div>
-                <div style="font-size: 10px; color: var(--text-muted);">${user.position || user.groupname || ''}</div>
-            </div>
-        `;
+
+        if (isAuth && this.state.currentUser) {
+            const user = this.state.currentUser;
+            const isMoph = user.auth_by === 'MOPH Provider ID';
+            userEl.innerHTML = `
+                <div class="user-avatar" style="${isMoph ? 'background: linear-gradient(135deg, #059669 0%, #10b981 100%);' : ''}" title="${isMoph ? 'ยืนยันตัวตนด้วย MOPH Provider ID' : 'ผู้ใช้งาน HOSxP'}">
+                    <i class="fa ${isMoph ? 'fa-id-badge' : 'fa-user-md'}"></i>
+                </div>
+                <div style="text-align: left;">
+                    <div style="font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                        ${user.name}
+                        ${isMoph ? '<span style="font-size: 9px; background: #10b981; color: #fff; padding: 1px 5px; border-radius: 10px;">หมอพร้อม</span>' : ''}
+                    </div>
+                    <div style="font-size: 10.5px; color: var(--text-muted);">${user.position || user.groupname || ''}</div>
+                </div>
+                <button onclick="App.logout()" title="ออกจากระบบ" style="background: none; border: none; color: var(--danger); cursor: pointer; padding: 4px 6px; font-size: 13px; margin-left: 4px;">
+                    <i class="fa fa-arrow-right-from-bracket"></i>
+                </button>
+            `;
+        } else {
+            userEl.innerHTML = `
+                <a href="/api/auth/moph/login" class="btn-moph-login" title="เข้าสู่ระบบด้วย MOPH Provider ID (หมอพร้อม)">
+                    <i class="fa-solid fa-shield-halved"></i>
+                    <span>Login MOPH Provider ID</span>
+                </a>
+            `;
+        }
+    },
+
+    async logout() {
+        if (!confirm('ต้องการออกจากระบบใช่หรือไม่?')) return;
+        try {
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.reload();
+        } catch (e) {
+            console.error('Logout error:', e);
+        }
     },
 
     async loadInitialMetadata() {
