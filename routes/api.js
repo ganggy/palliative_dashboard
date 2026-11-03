@@ -3,6 +3,21 @@ const router = express.Router();
 const palliativeService = require('../services/palliativeService');
 const { cacheMiddleware } = require('../middleware/cache');
 
+// Authentication Guard Middleware
+const requireAuth = (req, res, next) => {
+    if (req.session && req.session.user) {
+        return next();
+    }
+    return res.status(401).json({
+        success: false,
+        authenticated: false,
+        message: 'กรุณาเข้าสู่ระบบก่อนเข้าใช้งานข้อมูล'
+    });
+};
+
+// Protect all API routes
+router.use(requireAuth);
+
 // Apply caching to heavy read endpoints
 // Overview & charts: 120s TTL
 router.use('/charts', cacheMiddleware(120));

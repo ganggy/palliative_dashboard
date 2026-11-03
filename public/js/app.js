@@ -21,9 +21,13 @@ const App = {
         this.initDefaultDates();
         this.setupClock();
         this.setupEventListeners();
-        await this.checkAuth();
-        await this.loadInitialMetadata();
-        await this.navigate('dashboard');
+        const isAuthenticated = await this.checkAuth();
+        if (isAuthenticated) {
+            await this.loadInitialMetadata();
+            await this.navigate('dashboard');
+        } else {
+            this.renderLoginView();
+        }
     },
 
     initDefaultDates() {
@@ -87,14 +91,137 @@ const App = {
             const data = await res.json();
             if (data.authenticated) {
                 this.state.currentUser = data.user;
+                document.body.classList.remove('auth-required');
                 this.renderUserBadge(true);
+                return true;
             } else {
                 this.state.currentUser = null;
+                document.body.classList.add('auth-required');
                 this.renderUserBadge(false);
+                return false;
             }
         } catch (e) {
             console.error('Check auth error:', e);
+            document.body.classList.add('auth-required');
             this.renderUserBadge(false);
+            return false;
+        }
+    },
+
+    renderLoginView() {
+        document.body.classList.add('auth-required');
+        const container = document.getElementById('page-content');
+        if (!container) return;
+
+        container.innerHTML = `
+            <div class="login-screen-wrapper">
+                <div class="login-card">
+                    <div class="login-brand-icon">
+                        <i class="fa fa-heartbeat"></i>
+                    </div>
+                    <h1 class="login-brand-title">Palliative Care</h1>
+                    <div class="login-brand-subtitle">
+                        ระบบสารสนเทศการดูแลผู้ป่วยระยะประคับประคอง<br>
+                        <strong>โรงพยาบาลโคกศรีสุพรรณ</strong> (11101)
+                    </div>
+
+                    <!-- MOPH Provider ID Primary Login -->
+                    <a href="/api/auth/moph/login" class="btn-moph-auth" id="btn-moph-login">
+                        <i class="fa-solid fa-shield-halved"></i>
+                        <span>เข้าสู่ระบบด้วย หมอพร้อม<br><small style="font-size: 11px; opacity: 0.9; font-weight: normal;">(MOPH Provider ID)</small></span>
+                    </a>
+
+                    <div class="login-divider">
+                        <span>หรือเข้าสู่ระบบด้วยบัญชี HOSxP</span>
+                    </div>
+
+                    <!-- HOSxP Account Form -->
+                    <form id="hosxp-login-form" onsubmit="App.handleHosxpLogin(event)">
+                        <div class="login-form-group">
+                            <label><i class="fa fa-user"></i> ชื่อผู้ใช้งาน (HOSxP Username)</label>
+                            <div class="login-input-wrap">
+                                <i class="fa fa-user-doctor"></i>
+                                <input type="text" id="login-username" placeholder="ระบุ Username" autocomplete="username" required autofocus>
+                            </div>
+                        </div>
+
+                        <div class="login-form-group">
+                            <label><i class="fa fa-lock"></i> รหัสผ่าน (Password)</label>
+                            <div class="login-input-wrap">
+                                <i class="fa fa-key"></i>
+                                <input type="password" id="login-password" placeholder="ระบุ Password" autocomplete="current-password">
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn-hosp-login" id="btn-hosxp-submit">
+                            <i class="fa fa-right-to-bracket"></i> เข้าสู่ระบบด้วย HOSxP
+                        </button>
+
+                        <div class="login-alert error" id="login-error-box">
+                            <i class="fa fa-triangle-exclamation"></i>
+                            <span id="login-error-text">ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง</span>
+                        </div>
+                    </form>
+
+                    <div class="login-footer-info">
+                        <i class="fa fa-lock"></i> ระบบความปลอดภัยข้อมูลสุขภาพตามมาตรฐานกระทรวงสาธารณสุข<br>
+                        เชื่อมโยง HOSxP Database & FDH Checker
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    async handleHosxpLogin(e) {
+        if (e) e.preventDefault();
+        const usernameInput = document.getElementById('login-username');
+        const passwordInput = document.getElementById('login-password');
+        const errorBox = document.getElementById('login-error-box');
+        const errorText = document.getElementById('login-error-text');
+        const submitBtn = document.getElementById('btn-hosxp-submit');
+
+        if (!usernameInput) return;
+        const username = usernameInput.value.trim();
+        const password = passwordInput ? passwordInput.value : '';
+
+        if (!username) {
+            errorBox.style.display = 'flex';
+            errorText.textContent = 'กรุณาระบุชื่อผู้ใช้งาน';
+            return;
+        }
+
+        try {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> กำลังตรวจสอบ...';
+            errorBox.style.display = 'none';
+
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                // Login สำเร็จ
+                this.state.currentUser = data.user;
+                document.body.classList.remove('auth-required');
+                this.renderUserBadge(true);
+                await this.loadInitialMetadata();
+                await this.navigate('dashboard');
+            } else {
+                errorBox.style.display = 'flex';
+                errorText.textContent = data.message || 'ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง';
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<i class="fa fa-right-to-bracket"></i> เข้าสู่ระบบด้วย HOSxP';
+            }
+        } catch (err) {
+            console.error('Login error:', err);
+            errorBox.style.display = 'flex';
+            errorText.textContent = 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์';
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<i class="fa fa-right-to-bracket"></i> เข้าสู่ระบบด้วย HOSxP';
         }
     },
 
